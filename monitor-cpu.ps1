@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Monitor de uso de CPU com registro de alertas em arquivo de log.
 
@@ -67,9 +67,10 @@
 
 # Verifica se o sistema acabou de iniciar (evita falso positivo)
 try {
-    $uptime = (Get-Uptime).TotalMinutes
-    if ($uptime -lt $MinUptimeMinutes) {
-        Write-Verbose "Sistema com uptime de $([math]::Round($uptime, 2)) minutos. Aguardando estabilização."
+    $os = Get-CimInstance Win32_OperatingSystem
+    $uptime = (Get-Date) - $os.LastBootUpTime
+    if ($uptime.TotalMinutes -lt $MinUptimeMinutes) {
+        Write-Verbose "Sistema com uptime de $([math]::Round($uptime.TotalMinutes, 2)) minutos. Aguardando estabilização."
         exit 0
     }
 } catch {
@@ -81,9 +82,14 @@ try {
 # ============================================================================
 
 try {
-    # Obtém o uso atual da CPU do sistema
-    $cpuCounter = Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop
-    $cpuUsage = $cpuCounter.CounterSamples.CookedValue
+    # Obtém o uso atual da CPU do sistema via WMI
+    # Método mais confiável e compatível com diferentes versões do Windows
+    $cpuUsage = (Get-CimInstance Win32_Processor -ErrorAction Stop).LoadPercentage
+    
+    # Se retornar array (múltiplos processadores), calcular média
+    if ($cpuUsage -is [array]) {
+        $cpuUsage = ($cpuUsage | Measure-Object -Average).Average
+    }
     
 } catch {
     Write-Error "Erro ao coletar métrica de CPU: $_"
